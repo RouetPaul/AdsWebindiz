@@ -19,11 +19,14 @@ import { daysAgo } from "@/lib/utils";
 import { eq } from "drizzle-orm";
 
 export async function POST(request: NextRequest) {
-  // Auth: verify cron secret or manual trigger
+  // Auth: Vercel Cron sends this header automatically
+  // Manual triggers from the dashboard are allowed (same origin)
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
+  const isVercelCron = request.headers.get("x-vercel-cron") === "1";
+  const isManualTrigger = request.headers.get("x-manual-sync") === "1";
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (cronSecret && !isVercelCron && !isManualTrigger && authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

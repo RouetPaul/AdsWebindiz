@@ -16,7 +16,10 @@ export function Header({ title, lastSyncedAt }: HeaderProps) {
     setSyncing(true);
     setToast(null);
     try {
-      const res = await fetch("/api/sync", { method: "POST" });
+      const res = await fetch("/api/sync", {
+        method: "POST",
+        headers: { "x-manual-sync": "1" },
+      });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error ?? "Sync failed");
