@@ -43,13 +43,18 @@ export async function POST(request: NextRequest) {
   const until = daysAgo(0);
   let accountCount = 0;
 
-  await logStep(syncId, "info", "Sync démarrée", `Période: ${since} → ${until}`);
+  await logStep(syncId, "info", "Sync démarrée", `Période: ${since} → ${until} | Business ID: ${process.env.META_BUSINESS_ID} | API: ${process.env.META_API_VERSION}`);
 
   try {
-    // 1. Fetch all ad accounts
-    await logStep(syncId, "info", "Récupération des ad accounts depuis Meta...");
+    // 1. Fetch all ad accounts (owned + client)
+    await logStep(syncId, "info", "Récupération des ad accounts (owned + client) depuis Meta...");
     const metaAccounts = await getAdAccounts();
-    await logStep(syncId, "success", `${metaAccounts.length} ad account(s) trouvé(s)`, metaAccounts.map((a) => a.name).join(", "));
+
+    if (metaAccounts.length === 0) {
+      await logStep(syncId, "warn", "Aucun ad account trouvé", "Vérifiez que le System User Token a accès aux ad accounts du Business Manager et que les comptes sont bien assignés (owned ou client).");
+    } else {
+      await logStep(syncId, "success", `${metaAccounts.length} ad account(s) trouvé(s)`, metaAccounts.map((a) => `${a.name} (${a.account_id}, status=${a.account_status})`).join(" | "));
+    }
 
     for (const acc of metaAccounts) {
       await logStep(syncId, "info", `▸ Sync compte "${acc.name}" (${acc.account_id})...`);

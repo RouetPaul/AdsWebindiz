@@ -86,12 +86,24 @@ function authUrl(path: string, params: Record<string, string> = {}): string {
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 export async function getAdAccounts(): Promise<MetaAdAccount[]> {
-  return fetchAllPages<MetaAdAccount>(
-    authUrl(`/${BIZ_ID()}/owned_ad_accounts`, {
-      fields: "id,account_id,name,account_status,currency,spend_cap,amount_spent,balance",
-      limit: "100",
-    }),
-  );
+  const fields = "id,account_id,name,account_status,currency,spend_cap,amount_spent,balance";
+
+  // Fetch both owned and client ad accounts (agencies have client accounts)
+  const [owned, client] = await Promise.all([
+    fetchAllPages<MetaAdAccount>(
+      authUrl(`/${BIZ_ID()}/owned_ad_accounts`, { fields, limit: "100" }),
+    ),
+    fetchAllPages<MetaAdAccount>(
+      authUrl(`/${BIZ_ID()}/client_ad_accounts`, { fields, limit: "100" }),
+    ),
+  ]);
+
+  // Deduplicate by id
+  const map = new Map<string, MetaAdAccount>();
+  for (const acc of [...owned, ...client]) {
+    map.set(acc.id, acc);
+  }
+  return Array.from(map.values());
 }
 
 export async function getCampaigns(accountId: string): Promise<MetaCampaign[]> {
