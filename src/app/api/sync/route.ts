@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   // Create sync log entry
   const [log] = await db.insert(syncLog).values({}).returning();
   const syncId = log.id;
-  const since = daysAgo(7);
+  const since = daysAgo(30);
   const until = daysAgo(0);
   let accountCount = 0;
 
