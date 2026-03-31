@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { Header } from "@/components/layout/header";
 import { MetricsSummary, type MetricsData } from "@/components/dashboard/metrics-summary";
@@ -18,14 +18,15 @@ interface AccountDetailClientProps {
   account: AccountInfo;
   metrics: MetricsData;
   campaigns: CampaignRow[];
+  dateRange: DateRange;
 }
 
 export function AccountDetailClient({
   account,
   metrics,
   campaigns: initialCampaigns,
+  dateRange,
 }: AccountDetailClientProps) {
-  const [dateRange, setDateRange] = useState<DateRange>("7");
   const [campaigns, setCampaigns] = useState(initialCampaigns);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -87,7 +88,9 @@ export function AccountDetailClient({
         {/* Date range */}
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-medium text-white">Performance</h2>
-          <DateRangePicker value={dateRange} onChange={setDateRange} />
+          <Suspense>
+            <DateRangePicker value={dateRange} />
+          </Suspense>
         </div>
 
         {/* Metrics */}

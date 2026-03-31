@@ -9,16 +9,21 @@ import {
 import { eq, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { daysAgo, extractConversions } from "@/lib/utils";
 import { AccountDetailClient } from "./account-detail-client";
+import type { DateRange } from "@/components/dashboard/date-range-picker";
 
 export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ accountId: string }>;
+  searchParams: Promise<{ days?: string }>;
 }
 
-export default async function AccountDetailPage({ params }: PageProps) {
+export default async function AccountDetailPage({ params, searchParams }: PageProps) {
   const { accountId } = await params;
-  const since = daysAgo(7);
+  const { days: daysParam } = await searchParams;
+  const days = ["1", "7", "14", "30"].includes(daysParam ?? "") ? parseInt(daysParam!) : 7;
+  const dateRange = String(days) as DateRange;
+  const since = daysAgo(days);
   const until = daysAgo(0);
 
   // Get account info
@@ -219,6 +224,7 @@ export default async function AccountDetailPage({ params }: PageProps) {
         currency: account.currency,
       }}
       campaigns={campaignRows}
+      dateRange={dateRange}
     />
   );
 }

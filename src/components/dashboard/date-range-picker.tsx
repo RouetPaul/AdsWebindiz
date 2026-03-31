@@ -1,8 +1,9 @@
 "use client";
 
+import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-export type DateRange = "1" | "7" | "14" | "30" | "custom";
+export type DateRange = "1" | "7" | "14" | "30";
 
 const OPTIONS: { value: DateRange; label: string }[] = [
   { value: "1", label: "Aujourd'hui" },
@@ -13,16 +14,24 @@ const OPTIONS: { value: DateRange; label: string }[] = [
 
 interface DateRangePickerProps {
   value: DateRange;
-  onChange: (range: DateRange) => void;
 }
 
-export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
+export function DateRangePicker({ value }: DateRangePickerProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  function handleChange(range: DateRange) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("days", range);
+    router.push(`?${params.toString()}`);
+  }
+
   return (
     <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-zinc-900 p-1">
       {OPTIONS.map((opt) => (
         <button
           key={opt.value}
-          onClick={() => onChange(opt.value)}
+          onClick={() => handleChange(opt.value)}
           className={cn(
             "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
             value === opt.value

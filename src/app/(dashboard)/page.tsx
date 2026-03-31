@@ -3,8 +3,13 @@ import { adAccounts, campaigns, dailyInsights, syncLog } from "@/lib/db/schema";
 import { eq, and, gte, lte, desc, sql, count } from "drizzle-orm";
 import { daysAgo } from "@/lib/utils";
 import { DashboardClient } from "./dashboard-client";
+import type { DateRange } from "@/components/dashboard/date-range-picker";
 
 export const dynamic = "force-dynamic";
+
+interface PageProps {
+  searchParams: Promise<{ days?: string }>;
+}
 
 async function getDashboardData(days: number) {
   const since = daysAgo(days);
@@ -12,10 +17,8 @@ async function getDashboardData(days: number) {
   const prevSince = daysAgo(days * 2);
   const prevUntil = daysAgo(days + 1);
 
-  // All accounts
   const accounts = await db.select().from(adAccounts);
 
-  // Current period insights per account
   const currentInsights = await db
     .select({
       objectId: dailyInsights.objectId,
@@ -34,11 +37,12 @@ async function getDashboardData(days: number) {
     )
     .groupBy(dailyInsights.objectId);
 
-  // Previous period insights per account
   const prevInsights = await db
     .select({
       objectId: dailyInsights.objectId,
       spend: sql<number>`coalesce(sum(${dailyInsights.spend}), 0)`,
+      impressions: sql<number>`coalesce(sum(${dailyInsights.impressions}), 0)`,
+      clicks: sql<number>`coalesce(sum(${dailyInsights.clicks}), 0)`,
     })
     .from(dailyInsights)
     .where(
@@ -50,7 +54,6 @@ async function getDashboardData(days: number) {
     )
     .groupBy(dailyInsights.objectId);
 
-  // Daily spend trend per account (for sparklines)
   const dailySpend = await db
     .select({
       objectId: dailyInsights.objectId,
@@ -67,7 +70,6 @@ async function getDashboardData(days: number) {
     )
     .orderBy(dailyInsights.date);
 
-  // Active campaigns count per account
   const activeCounts = await db
     .select({
       accountId: campaigns.accountId,
@@ -77,7 +79,6 @@ async function getDashboardData(days: number) {
     .where(eq(campaigns.status, "ACTIVE"))
     .groupBy(campaigns.accountId);
 
-  // Last sync
   const [lastSync] = await db
     .select()
     .from(syncLog)
@@ -85,7 +86,6 @@ async function getDashboardData(days: number) {
     .orderBy(desc(syncLog.completedAt))
     .limit(1);
 
-  // Build maps
   const currentMap = new Map(currentInsights.map((r) => [r.objectId, r]));
   const prevMap = new Map(prevInsights.map((r) => [r.objectId, r]));
   const activeMap = new Map(activeCounts.map((r) => [r.accountId, r.count]));
@@ -97,9 +97,8 @@ async function getDashboardData(days: number) {
     trendMap.set(row.objectId, list);
   }
 
-  // Aggregate totals
   let totalSpend = 0, totalImpressions = 0, totalClicks = 0, totalReach = 0;
-  let prevTotalSpend = 0;
+  let prevTotalSpend = 0, prevTotalImpressions = 0, prevTotalClicks = 0;
 
   for (const ins of currentInsights) {
     totalSpend += ins.spend;
@@ -109,12 +108,14 @@ async function getDashboardData(days: number) {
   }
   for (const ins of prevInsights) {
     prevTotalSpend += ins.spend;
+    prevTotalImpressions += ins.impressions;
+    prevTotalClicks += ins.clicks;
   }
 
   const totalCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
   const totalCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
-  const prevCtr = 0; // simplified
-  const prevCpc = 0;
+  const prevCtr = prevTotalImpressions > 0 ? (prevTotalClicks / prevTotalImpressions) * 100 : 0;
+  const prevCpc = prevTotalClicks > 0 ? prevTotalSpend / prevTotalClicks : 0;
 
   const accountCards = accounts.map((acc) => {
     const curr = currentMap.get(acc.metaId);
@@ -145,8 +146,8 @@ async function getDashboardData(days: number) {
       cpc: totalCpc,
       reach: totalReach,
       prevSpend: prevTotalSpend,
-      prevImpressions: undefined as number | undefined,
-      prevClicks: undefined as number | undefined,
+      prevImpressions: prevTotalImpressions,
+      prevClicks: prevTotalClicks,
       prevCtr,
       prevCpc,
     },
@@ -155,8 +156,12 @@ async function getDashboardData(days: number) {
   };
 }
 
-export default async function DashboardPage() {
-  const data = await getDashboardData(7);
+export default async function DashboardPage({ searchParams }: PageProps) {
+  const { days: daysParam } = await searchParams;
+  const days = ["1", "7", "14", "30"].includes(daysParam ?? "") ? parseInt(daysParam!) : 7;
+  const dateRange = String(days) as DateRange;
 
-  return <DashboardClient initialData={data} />;
+  const data = await getDashboardData(days);
+
+  return <DashboardClient initialData={data} dateRange={dateRange} />;
 }
