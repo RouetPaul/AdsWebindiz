@@ -118,3 +118,28 @@ export const syncLog = pgTable("sync_log", {
   accountsSynced: integer("accounts_synced").default(0),
   error: text("error"),
 });
+
+// ─── Sync Steps (detailed logs) ─────────────────────────────────────────────
+
+export const syncLogLevelEnum = pgEnum("sync_log_level", [
+  "info",
+  "success",
+  "warn",
+  "error",
+]);
+
+export const syncSteps = pgTable(
+  "sync_steps",
+  {
+    id: serial("id").primaryKey(),
+    syncId: integer("sync_id")
+      .notNull()
+      .references(() => syncLog.id),
+    timestamp: timestamp("timestamp").defaultNow(),
+    level: syncLogLevelEnum("level").notNull().default("info"),
+    message: text("message").notNull(),
+    detail: text("detail"),
+  },
+  (t) => [index("sync_steps_sync_idx").on(t.syncId)],
+);
+

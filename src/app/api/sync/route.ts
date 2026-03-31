@@ -7,6 +7,7 @@ import {
   ads,
   dailyInsights,
   syncLog,
+  syncSteps,
 } from "@/lib/db/schema";
 import {
   getAdAccounts,
@@ -18,9 +19,14 @@ import {
 import { daysAgo } from "@/lib/utils";
 import { eq } from "drizzle-orm";
 
+type LogLevel = "info" | "success" | "warn" | "error";
+
+async function logStep(syncId: number, level: LogLevel, message: string, detail?: string) {
+  await db.insert(syncSteps).values({ syncId, level, message, detail });
+}
+
 export async function POST(request: NextRequest) {
-  // Auth: Vercel Cron sends this header automatically
-  // Manual triggers from the dashboard are allowed (same origin)
+  // Auth
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   const isVercelCron = request.headers.get("x-vercel-cron") === "1";
@@ -32,15 +38,22 @@ export async function POST(request: NextRequest) {
 
   // Create sync log entry
   const [log] = await db.insert(syncLog).values({}).returning();
+  const syncId = log.id;
   const since = daysAgo(7);
   const until = daysAgo(0);
   let accountCount = 0;
 
+  await logStep(syncId, "info", "Sync démarrée", `Période: ${since} → ${until}`);
+
   try {
     // 1. Fetch all ad accounts
+    await logStep(syncId, "info", "Récupération des ad accounts depuis Meta...");
     const metaAccounts = await getAdAccounts();
+    await logStep(syncId, "success", `${metaAccounts.length} ad account(s) trouvé(s)`, metaAccounts.map((a) => a.name).join(", "));
 
     for (const acc of metaAccounts) {
+      await logStep(syncId, "info", `▸ Sync compte "${acc.name}" (${acc.account_id})...`);
+
       // Upsert account
       await db
         .insert(adAccounts)
@@ -62,8 +75,10 @@ export async function POST(request: NextRequest) {
           },
         });
 
-      // 2. Fetch campaigns for this account
+      // 2. Fetch campaigns
+      await logStep(syncId, "info", `  Récupération des campagnes pour ${acc.name}...`);
       const metaCampaigns = await getCampaigns(acc.account_id);
+      await logStep(syncId, "success", `  ${metaCampaigns.length} campagne(s) trouvée(s)`);
 
       for (const camp of metaCampaigns) {
         await db
@@ -89,8 +104,9 @@ export async function POST(request: NextRequest) {
             },
           });
 
-        // 3. Fetch ad sets for this campaign
+        // 3. Fetch ad sets
         const metaAdSets = await getAdSets(camp.id);
+        let adCount = 0;
 
         for (const adSet of metaAdSets) {
           await db
@@ -113,8 +129,9 @@ export async function POST(request: NextRequest) {
               },
             });
 
-          // 4. Fetch ads for this ad set
+          // 4. Fetch ads
           const metaAds = await getAds(adSet.id);
+          adCount += metaAds.length;
 
           for (const ad of metaAds) {
             await db
@@ -135,21 +152,48 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // 5. Fetch insights for this campaign (last 7 days)
-        const campInsights = await getInsights(camp.id, since, until);
-        for (const insight of campInsights) {
-          const date = insight.date_start;
-          // Upsert: delete existing then insert
-          await db
-            .delete(dailyInsights)
-            .where(
-              eq(dailyInsights.objectId, camp.id),
-            );
+        await logStep(syncId, "info", `  Campagne "${camp.name}": ${metaAdSets.length} ad set(s), ${adCount} ad(s)`);
 
+        // 5. Fetch insights
+        try {
+          const campInsights = await getInsights(camp.id, since, until);
+          // Delete old + insert fresh
+          await db.delete(dailyInsights).where(eq(dailyInsights.objectId, camp.id));
+          for (const insight of campInsights) {
+            await db.insert(dailyInsights).values({
+              objectId: camp.id,
+              objectType: "campaign",
+              date: insight.date_start,
+              spend: parseFloat(insight.spend || "0"),
+              impressions: parseInt(insight.impressions || "0"),
+              clicks: parseInt(insight.clicks || "0"),
+              cpc: parseFloat(insight.cpc || "0"),
+              cpm: parseFloat(insight.cpm || "0"),
+              ctr: parseFloat(insight.ctr || "0"),
+              reach: parseInt(insight.reach || "0"),
+              frequency: parseFloat(insight.frequency || "0"),
+              conversions: insight.actions ?? null,
+            });
+          }
+          if (campInsights.length > 0) {
+            await logStep(syncId, "success", `  Insights "${camp.name}": ${campInsights.length} jour(s) importé(s)`);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          await logStep(syncId, "warn", `  Insights "${camp.name}" échoué`, msg);
+        }
+      }
+
+      // Account-level insights
+      try {
+        await logStep(syncId, "info", `  Récupération insights compte ${acc.name}...`);
+        const accInsights = await getInsights(acc.id, since, until);
+        await db.delete(dailyInsights).where(eq(dailyInsights.objectId, acc.id));
+        for (const insight of accInsights) {
           await db.insert(dailyInsights).values({
-            objectId: camp.id,
-            objectType: "campaign",
-            date,
+            objectId: acc.id,
+            objectType: "account",
+            date: insight.date_start,
             spend: parseFloat(insight.spend || "0"),
             impressions: parseInt(insight.impressions || "0"),
             clicks: parseInt(insight.clicks || "0"),
@@ -161,62 +205,35 @@ export async function POST(request: NextRequest) {
             conversions: insight.actions ?? null,
           });
         }
-      }
-
-      // Account-level insights
-      const accInsights = await getInsights(acc.id, since, until);
-      for (const insight of accInsights) {
-        await db
-          .delete(dailyInsights)
-          .where(eq(dailyInsights.objectId, acc.id));
-
-        await db.insert(dailyInsights).values({
-          objectId: acc.id,
-          objectType: "account",
-          date: insight.date_start,
-          spend: parseFloat(insight.spend || "0"),
-          impressions: parseInt(insight.impressions || "0"),
-          clicks: parseInt(insight.clicks || "0"),
-          cpc: parseFloat(insight.cpc || "0"),
-          cpm: parseFloat(insight.cpm || "0"),
-          ctr: parseFloat(insight.ctr || "0"),
-          reach: parseInt(insight.reach || "0"),
-          frequency: parseFloat(insight.frequency || "0"),
-          conversions: insight.actions ?? null,
-        });
+        await logStep(syncId, "success", `  Insights compte: ${accInsights.length} jour(s)`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await logStep(syncId, "warn", `  Insights compte ${acc.name} échoué`, msg);
       }
 
       accountCount++;
+      await logStep(syncId, "success", `✓ Compte "${acc.name}" synchronisé`);
     }
 
-    // Update sync log
+    // Done
     await db
       .update(syncLog)
-      .set({
-        status: "completed",
-        completedAt: new Date(),
-        accountsSynced: accountCount,
-      })
-      .where(eq(syncLog.id, log.id));
+      .set({ status: "completed", completedAt: new Date(), accountsSynced: accountCount })
+      .where(eq(syncLog.id, syncId));
 
-    return NextResponse.json({
-      success: true,
-      accountsSynced: accountCount,
-    });
+    await logStep(syncId, "success", `Sync terminée — ${accountCount} compte(s) synchronisé(s)`);
+
+    return NextResponse.json({ success: true, syncId, accountsSynced: accountCount });
   } catch (error) {
-    console.error("Sync failed:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
+    const stack = error instanceof Error ? error.stack : undefined;
 
+    await logStep(syncId, "error", `Sync échouée: ${message}`, stack);
     await db
       .update(syncLog)
-      .set({
-        status: "failed",
-        completedAt: new Date(),
-        accountsSynced: accountCount,
-        error: message,
-      })
-      .where(eq(syncLog.id, log.id));
+      .set({ status: "failed", completedAt: new Date(), accountsSynced: accountCount, error: message })
+      .where(eq(syncLog.id, syncId));
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message, syncId }, { status: 500 });
   }
 }
