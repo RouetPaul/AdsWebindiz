@@ -6,8 +6,8 @@ import {
   ads,
   dailyInsights,
 } from "@/lib/db/schema";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { daysAgo } from "@/lib/utils";
+import { eq, and, gte, lte, sql, inArray } from "drizzle-orm";
+import { daysAgo, extractConversions } from "@/lib/utils";
 import { AccountDetailClient } from "./account-detail-client";
 
 export const dynamic = "force-dynamic";
@@ -42,42 +42,75 @@ export default async function AccountDetailPage({ params }: PageProps) {
     .from(campaigns)
     .where(eq(campaigns.accountId, account.metaId));
 
-  // Get insights for each campaign
-  const campaignInsights = await db
-    .select({
-      objectId: dailyInsights.objectId,
-      spend: sql<number>`coalesce(sum(${dailyInsights.spend}), 0)`,
-      impressions: sql<number>`coalesce(sum(${dailyInsights.impressions}), 0)`,
-      clicks: sql<number>`coalesce(sum(${dailyInsights.clicks}), 0)`,
-      ctr: sql<number>`case when sum(${dailyInsights.impressions}) > 0 then sum(${dailyInsights.clicks})::float / sum(${dailyInsights.impressions}) * 100 else 0 end`,
-      cpc: sql<number>`case when sum(${dailyInsights.clicks}) > 0 then sum(${dailyInsights.spend}) / sum(${dailyInsights.clicks}) else 0 end`,
-    })
-    .from(dailyInsights)
-    .where(
-      and(
-        eq(dailyInsights.objectType, "campaign"),
-        gte(dailyInsights.date, since),
-        lte(dailyInsights.date, until),
-      ),
-    )
-    .groupBy(dailyInsights.objectId);
+  const campaignIds = accountCampaigns.map((c) => c.metaId);
 
-  // Daily spend per campaign (for sparklines)
-  const dailySpend = await db
-    .select({
-      objectId: dailyInsights.objectId,
-      date: dailyInsights.date,
-      spend: dailyInsights.spend,
-    })
-    .from(dailyInsights)
-    .where(
-      and(
-        eq(dailyInsights.objectType, "campaign"),
-        gte(dailyInsights.date, since),
-        lte(dailyInsights.date, until),
-      ),
-    )
-    .orderBy(dailyInsights.date);
+  // Get insights ONLY for this account's campaigns
+  const campaignInsights = campaignIds.length > 0
+    ? await db
+        .select({
+          objectId: dailyInsights.objectId,
+          spend: sql<number>`coalesce(sum(${dailyInsights.spend}), 0)`,
+          impressions: sql<number>`coalesce(sum(${dailyInsights.impressions}), 0)`,
+          clicks: sql<number>`coalesce(sum(${dailyInsights.clicks}), 0)`,
+          ctr: sql<number>`case when sum(${dailyInsights.impressions}) > 0 then sum(${dailyInsights.clicks})::float / sum(${dailyInsights.impressions}) * 100 else 0 end`,
+          cpc: sql<number>`case when sum(${dailyInsights.clicks}) > 0 then sum(${dailyInsights.spend}) / sum(${dailyInsights.clicks}) else 0 end`,
+        })
+        .from(dailyInsights)
+        .where(
+          and(
+            inArray(dailyInsights.objectId, campaignIds),
+            eq(dailyInsights.objectType, "campaign"),
+            gte(dailyInsights.date, since),
+            lte(dailyInsights.date, until),
+          ),
+        )
+        .groupBy(dailyInsights.objectId)
+    : [];
+
+  // Get raw insights for conversions extraction (per campaign)
+  const rawInsights = campaignIds.length > 0
+    ? await db
+        .select({
+          objectId: dailyInsights.objectId,
+          conversions: dailyInsights.conversions,
+        })
+        .from(dailyInsights)
+        .where(
+          and(
+            inArray(dailyInsights.objectId, campaignIds),
+            eq(dailyInsights.objectType, "campaign"),
+            gte(dailyInsights.date, since),
+            lte(dailyInsights.date, until),
+          ),
+        )
+    : [];
+
+  // Aggregate conversions per campaign
+  const convMap = new Map<string, number>();
+  for (const row of rawInsights) {
+    const prev = convMap.get(row.objectId) ?? 0;
+    convMap.set(row.objectId, prev + extractConversions(row.conversions));
+  }
+
+  // Daily spend per campaign (for sparklines) — scoped to this account
+  const dailySpend = campaignIds.length > 0
+    ? await db
+        .select({
+          objectId: dailyInsights.objectId,
+          date: dailyInsights.date,
+          spend: dailyInsights.spend,
+        })
+        .from(dailyInsights)
+        .where(
+          and(
+            inArray(dailyInsights.objectId, campaignIds),
+            eq(dailyInsights.objectType, "campaign"),
+            gte(dailyInsights.date, since),
+            lte(dailyInsights.date, until),
+          ),
+        )
+        .orderBy(dailyInsights.date)
+    : [];
 
   // Account-level insights
   const [accInsight] = await db
@@ -97,11 +130,16 @@ export default async function AccountDetailPage({ params }: PageProps) {
       ),
     );
 
-  // Get ad sets for each campaign
-  const allAdSets = await db.select().from(adSets);
-  const allAds = await db.select().from(ads);
+  // Get ad sets & ads for this account's campaigns only
+  const allAdSets = campaignIds.length > 0
+    ? await db.select().from(adSets).where(inArray(adSets.campaignId, campaignIds))
+    : [];
+  const adSetIds = allAdSets.map((as) => as.metaId);
+  const allAds = adSetIds.length > 0
+    ? await db.select().from(ads).where(inArray(ads.adSetId, adSetIds))
+    : [];
 
-  // Build insight maps
+  // Build maps
   const insightMap = new Map(campaignInsights.map((r) => [r.objectId, r]));
   const trendMap = new Map<string, number[]>();
   for (const row of dailySpend) {
@@ -156,7 +194,7 @@ export default async function AccountDetailPage({ params }: PageProps) {
       clicks: ins?.clicks ?? 0,
       ctr: ins?.ctr ?? 0,
       cpc: ins?.cpc ?? 0,
-      conversions: 0,
+      conversions: convMap.get(c.metaId) ?? 0,
       spendTrend: trendMap.get(c.metaId) ?? [],
       currency: account.currency,
       adSets: campAdSets,

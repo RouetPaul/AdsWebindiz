@@ -57,7 +57,12 @@ export async function POST(request: NextRequest) {
     }
 
     for (const acc of metaAccounts) {
-      await logStep(syncId, "info", `▸ Sync compte "${acc.name}" (${acc.account_id})...`);
+      // Use business_name as fallback when name is just the account ID
+      const displayName = (acc.business_name && acc.business_name !== acc.account_id)
+        ? acc.business_name
+        : (acc.name !== acc.account_id ? acc.name : acc.business_name ?? acc.name);
+
+      await logStep(syncId, "info", `▸ Sync compte "${displayName}" (${acc.account_id})...`);
 
       // Upsert account
       await db
@@ -65,7 +70,7 @@ export async function POST(request: NextRequest) {
         .values({
           metaId: acc.id,
           accountId: acc.account_id,
-          name: acc.name,
+          name: displayName,
           status: acc.account_status,
           currency: acc.currency,
           lastSyncedAt: new Date(),
@@ -73,7 +78,7 @@ export async function POST(request: NextRequest) {
         .onConflictDoUpdate({
           target: adAccounts.metaId,
           set: {
-            name: acc.name,
+            name: displayName,
             status: acc.account_status,
             currency: acc.currency,
             lastSyncedAt: new Date(),

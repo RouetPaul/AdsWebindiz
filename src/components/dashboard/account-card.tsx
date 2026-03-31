@@ -46,7 +46,7 @@ export function AccountCard({
         <div>
           <p className="text-xs text-zinc-500">Dépenses</p>
           <p className="text-lg font-semibold text-white">
-            {formatMoney(spend * 100, currency)}
+            {formatMoney(spend, currency)}
           </p>
           {change !== undefined && (
             <p

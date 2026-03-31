@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatMoney, formatNumber, formatPercent, cn } from "@/lib/utils";
+import { formatMoney, formatBudget, formatNumber, formatPercent, objectiveLabel, cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Sparkline } from "@/components/ui/sparkline";
 
@@ -124,167 +124,187 @@ export function CampaignTable({ campaigns, currency, onToggleStatus }: CampaignT
               <th className="w-8 px-4 py-3" />
               <SortHeader label="Campagne" field="name" />
               <SortHeader label="Status" field="status" />
+              <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400">Objectif</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400">Budget/j</th>
               <SortHeader label="Dépenses" field="spend" />
               <SortHeader label="Impressions" field="impressions" />
               <SortHeader label="Clics" field="clicks" />
               <SortHeader label="CTR" field="ctr" />
               <SortHeader label="CPC" field="cpc" />
-              <SortHeader label="Conversions" field="conversions" />
+              <SortHeader label="Conv." field="conversions" />
               <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400">Tendance</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
             {sorted.map((camp) => (
-              <>
-                {/* Campaign row */}
-                <tr
-                  key={camp.metaId}
-                  className="cursor-pointer transition-colors hover:bg-white/5"
-                  onClick={() =>
-                    setExpandedCampaign(expandedCampaign === camp.metaId ? null : camp.metaId)
-                  }
-                >
-                  <td className="px-4 py-3 text-zinc-500">
-                    {expandedCampaign === camp.metaId ? "\u25BC" : "\u25B6"}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-medium text-white">{camp.name}</td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleStatus(
-                          camp.metaId,
-                          "campaign",
-                          camp.status === "ACTIVE" ? "PAUSED" : "ACTIVE",
-                        );
-                      }}
-                    >
-                      <StatusBadge status={camp.status} clickable />
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-zinc-300">
-                    {camp.dailyBudget ? formatMoney(camp.dailyBudget, currency) : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-zinc-300">
-                    {formatMoney(camp.spend * 100, currency)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-zinc-300">
-                    {formatNumber(camp.impressions)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-zinc-300">{formatNumber(camp.clicks)}</td>
-                  <td className="px-4 py-3 text-sm text-zinc-300">{formatPercent(camp.ctr)}</td>
-                  <td className="px-4 py-3 text-sm text-zinc-300">
-                    {formatMoney(camp.cpc * 100, currency)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-zinc-300">{camp.conversions}</td>
-                  <td className="px-4 py-3">
-                    {camp.spendTrend.length > 1 && (
-                      <Sparkline data={camp.spendTrend} className="h-6 w-20" />
-                    )}
-                  </td>
-                </tr>
-
-                {/* Expanded: Ad Sets */}
-                {expandedCampaign === camp.metaId &&
-                  camp.adSets?.map((adSet) => (
-                    <>
-                      <tr
-                        key={adSet.metaId}
-                        className="cursor-pointer bg-zinc-900/30 transition-colors hover:bg-white/5"
-                        onClick={() =>
-                          setExpandedAdSet(expandedAdSet === adSet.metaId ? null : adSet.metaId)
-                        }
-                      >
-                        <td className="px-4 py-2 pl-8 text-xs text-zinc-600">
-                          {expandedAdSet === adSet.metaId ? "\u25BC" : "\u25B6"}
-                        </td>
-                        <td className="px-4 py-2 text-sm text-zinc-300">{adSet.name}</td>
-                        <td className="px-4 py-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onToggleStatus(
-                                adSet.metaId,
-                                "adset",
-                                adSet.status === "ACTIVE" ? "PAUSED" : "ACTIVE",
-                              );
-                            }}
-                          >
-                            <StatusBadge status={adSet.status} clickable />
-                          </button>
-                        </td>
-                        <td className="px-4 py-2 text-sm text-zinc-400">
-                          {adSet.dailyBudget ? formatMoney(adSet.dailyBudget, currency) : "—"}
-                        </td>
-                        <td className="px-4 py-2 text-sm text-zinc-400">
-                          {formatMoney(adSet.spend * 100, currency)}
-                        </td>
-                        <td className="px-4 py-2 text-sm text-zinc-400">
-                          {formatNumber(adSet.impressions)}
-                        </td>
-                        <td className="px-4 py-2 text-sm text-zinc-400">
-                          {formatNumber(adSet.clicks)}
-                        </td>
-                        <td className="px-4 py-2 text-sm text-zinc-400">
-                          {formatPercent(adSet.ctr)}
-                        </td>
-                        <td className="px-4 py-2 text-sm text-zinc-400">
-                          {formatMoney(adSet.cpc * 100, currency)}
-                        </td>
-                        <td className="px-4 py-2" />
-                        <td className="px-4 py-2" />
-                      </tr>
-
-                      {/* Expanded: Ads */}
-                      {expandedAdSet === adSet.metaId &&
-                        adSet.ads?.map((ad) => (
-                          <tr
-                            key={ad.metaId}
-                            className="bg-zinc-900/50"
-                          >
-                            <td className="px-4 py-2 pl-12" />
-                            <td className="px-4 py-2 text-xs text-zinc-400">{ad.name}</td>
-                            <td className="px-4 py-2">
-                              <button
-                                onClick={() =>
-                                  onToggleStatus(
-                                    ad.metaId,
-                                    "ad",
-                                    ad.status === "ACTIVE" ? "PAUSED" : "ACTIVE",
-                                  )
-                                }
-                              >
-                                <StatusBadge status={ad.status} clickable />
-                              </button>
-                            </td>
-                            <td className="px-4 py-2" />
-                            <td className="px-4 py-2 text-xs text-zinc-400">
-                              {formatMoney(ad.spend * 100, currency)}
-                            </td>
-                            <td className="px-4 py-2 text-xs text-zinc-400">
-                              {formatNumber(ad.impressions)}
-                            </td>
-                            <td className="px-4 py-2 text-xs text-zinc-400">
-                              {formatNumber(ad.clicks)}
-                            </td>
-                            <td className="px-4 py-2 text-xs text-zinc-400">
-                              {formatPercent(ad.ctr)}
-                            </td>
-                            <td className="px-4 py-2 text-xs text-zinc-400">
-                              {formatMoney(ad.cpc * 100, currency)}
-                            </td>
-                            <td className="px-4 py-2" />
-                            <td className="px-4 py-2" />
-                          </tr>
-                        ))}
-                    </>
-                  ))}
-              </>
+              <CampaignRowBlock
+                key={camp.metaId}
+                camp={camp}
+                currency={currency}
+                expanded={expandedCampaign === camp.metaId}
+                expandedAdSet={expandedAdSet}
+                onToggleExpand={() =>
+                  setExpandedCampaign(expandedCampaign === camp.metaId ? null : camp.metaId)
+                }
+                onToggleAdSet={(id) =>
+                  setExpandedAdSet(expandedAdSet === id ? null : id)
+                }
+                onToggleStatus={onToggleStatus}
+              />
             ))}
           </tbody>
         </table>
       </div>
     </div>
+  );
+}
+
+function CampaignRowBlock({
+  camp,
+  currency,
+  expanded,
+  expandedAdSet,
+  onToggleExpand,
+  onToggleAdSet,
+  onToggleStatus,
+}: {
+  camp: CampaignRow;
+  currency: string;
+  expanded: boolean;
+  expandedAdSet: string | null;
+  onToggleExpand: () => void;
+  onToggleAdSet: (id: string) => void;
+  onToggleStatus: (id: string, type: "campaign" | "adset" | "ad", newStatus: string) => void;
+}) {
+  return (
+    <>
+      <tr
+        className="cursor-pointer transition-colors hover:bg-white/5"
+        onClick={onToggleExpand}
+      >
+        <td className="px-4 py-3 text-zinc-500">
+          {expanded ? "\u25BC" : "\u25B6"}
+        </td>
+        <td className="max-w-[250px] truncate px-4 py-3 text-sm font-medium text-white" title={camp.name}>
+          {camp.name}
+        </td>
+        <td className="px-4 py-3">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleStatus(camp.metaId, "campaign", camp.status === "ACTIVE" ? "PAUSED" : "ACTIVE");
+            }}
+          >
+            <StatusBadge status={camp.status} clickable />
+          </button>
+        </td>
+        <td className="px-4 py-3 text-xs text-zinc-400">{objectiveLabel(camp.objective)}</td>
+        <td className="px-4 py-3 text-sm text-zinc-300">
+          {camp.dailyBudget ? formatBudget(camp.dailyBudget, currency) : "—"}
+        </td>
+        <td className="px-4 py-3 text-sm text-zinc-300">{formatMoney(camp.spend, currency)}</td>
+        <td className="px-4 py-3 text-sm text-zinc-300">{formatNumber(camp.impressions)}</td>
+        <td className="px-4 py-3 text-sm text-zinc-300">{formatNumber(camp.clicks)}</td>
+        <td className="px-4 py-3 text-sm text-zinc-300">{formatPercent(camp.ctr)}</td>
+        <td className="px-4 py-3 text-sm text-zinc-300">{formatMoney(camp.cpc, currency)}</td>
+        <td className="px-4 py-3 text-sm text-zinc-300">{camp.conversions > 0 ? camp.conversions : "—"}</td>
+        <td className="px-4 py-3">
+          {camp.spendTrend.length > 1 && (
+            <Sparkline data={camp.spendTrend} className="h-6 w-20" />
+          )}
+        </td>
+      </tr>
+
+      {expanded &&
+        camp.adSets?.map((adSet) => (
+          <AdSetRowBlock
+            key={adSet.metaId}
+            adSet={adSet}
+            currency={currency}
+            expanded={expandedAdSet === adSet.metaId}
+            onToggleExpand={() => onToggleAdSet(adSet.metaId)}
+            onToggleStatus={onToggleStatus}
+          />
+        ))}
+    </>
+  );
+}
+
+function AdSetRowBlock({
+  adSet,
+  currency,
+  expanded,
+  onToggleExpand,
+  onToggleStatus,
+}: {
+  adSet: AdSetRow;
+  currency: string;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onToggleStatus: (id: string, type: "campaign" | "adset" | "ad", newStatus: string) => void;
+}) {
+  return (
+    <>
+      <tr
+        className="cursor-pointer bg-zinc-900/30 transition-colors hover:bg-white/5"
+        onClick={onToggleExpand}
+      >
+        <td className="px-4 py-2 pl-8 text-xs text-zinc-600">
+          {expanded ? "\u25BC" : "\u25B6"}
+        </td>
+        <td className="max-w-[230px] truncate px-4 py-2 text-sm text-zinc-300" title={adSet.name}>
+          {adSet.name}
+        </td>
+        <td className="px-4 py-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleStatus(adSet.metaId, "adset", adSet.status === "ACTIVE" ? "PAUSED" : "ACTIVE");
+            }}
+          >
+            <StatusBadge status={adSet.status} clickable />
+          </button>
+        </td>
+        <td className="px-4 py-2" />
+        <td className="px-4 py-2 text-sm text-zinc-400">
+          {adSet.dailyBudget ? formatBudget(adSet.dailyBudget, currency) : "—"}
+        </td>
+        <td className="px-4 py-2 text-sm text-zinc-400">{formatMoney(adSet.spend, currency)}</td>
+        <td className="px-4 py-2 text-sm text-zinc-400">{formatNumber(adSet.impressions)}</td>
+        <td className="px-4 py-2 text-sm text-zinc-400">{formatNumber(adSet.clicks)}</td>
+        <td className="px-4 py-2 text-sm text-zinc-400">{formatPercent(adSet.ctr)}</td>
+        <td className="px-4 py-2 text-sm text-zinc-400">{formatMoney(adSet.cpc, currency)}</td>
+        <td className="px-4 py-2" />
+        <td className="px-4 py-2" />
+      </tr>
+
+      {expanded &&
+        adSet.ads?.map((ad) => (
+          <tr key={ad.metaId} className="bg-zinc-900/50">
+            <td className="px-4 py-2 pl-12" />
+            <td className="max-w-[210px] truncate px-4 py-2 text-xs text-zinc-400" title={ad.name}>
+              {ad.name}
+            </td>
+            <td className="px-4 py-2">
+              <button
+                onClick={() =>
+                  onToggleStatus(ad.metaId, "ad", ad.status === "ACTIVE" ? "PAUSED" : "ACTIVE")
+                }
+              >
+                <StatusBadge status={ad.status} clickable />
+              </button>
+            </td>
+            <td className="px-4 py-2" />
+            <td className="px-4 py-2" />
+            <td className="px-4 py-2 text-xs text-zinc-400">{formatMoney(ad.spend, currency)}</td>
+            <td className="px-4 py-2 text-xs text-zinc-400">{formatNumber(ad.impressions)}</td>
+            <td className="px-4 py-2 text-xs text-zinc-400">{formatNumber(ad.clicks)}</td>
+            <td className="px-4 py-2 text-xs text-zinc-400">{formatPercent(ad.ctr)}</td>
+            <td className="px-4 py-2 text-xs text-zinc-400">{formatMoney(ad.cpc, currency)}</td>
+            <td className="px-4 py-2" />
+            <td className="px-4 py-2" />
+          </tr>
+        ))}
+    </>
   );
 }

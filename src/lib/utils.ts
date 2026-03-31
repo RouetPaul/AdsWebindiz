@@ -1,10 +1,15 @@
-/** Format cents (Meta amounts) to display currency */
-export function formatMoney(cents: number, currency = "EUR"): string {
+/** Format euros to display currency (Meta insights are already in euros) */
+export function formatMoney(amount: number, currency = "EUR"): string {
   return new Intl.NumberFormat("fr-FR", {
     style: "currency",
     currency,
     minimumFractionDigits: 2,
-  }).format(cents / 100);
+  }).format(amount);
+}
+
+/** Format centimes to euros then display (Meta budgets are in centimes) */
+export function formatBudget(centimes: number, currency = "EUR"): string {
+  return formatMoney(centimes / 100, currency);
 }
 
 /** Format large numbers with abbreviations */
@@ -54,6 +59,50 @@ export function accountStatusLabel(status: number): string {
     201: "ANY_ACTIVE",
   };
   return map[status] ?? "UNKNOWN";
+}
+
+/** Map Meta campaign objective to French label */
+export function objectiveLabel(objective: string | null): string {
+  if (!objective) return "—";
+  const map: Record<string, string> = {
+    OUTCOME_AWARENESS: "Notoriété",
+    OUTCOME_ENGAGEMENT: "Engagement",
+    OUTCOME_LEADS: "Prospects",
+    OUTCOME_SALES: "Conversions",
+    OUTCOME_TRAFFIC: "Trafic",
+    OUTCOME_APP_PROMOTION: "App",
+    LINK_CLICKS: "Clics",
+    POST_ENGAGEMENT: "Engagement",
+    REACH: "Couverture",
+    BRAND_AWARENESS: "Notoriété",
+    VIDEO_VIEWS: "Vues vidéo",
+    MESSAGES: "Messages",
+    CONVERSIONS: "Conversions",
+    LEAD_GENERATION: "Génération de prospects",
+  };
+  return map[objective] ?? objective;
+}
+
+/** Extract conversion count from Meta actions array */
+export function extractConversions(actions: unknown): number {
+  if (!Array.isArray(actions)) return 0;
+  let total = 0;
+  for (const action of actions) {
+    const a = action as { action_type?: string; value?: string };
+    if (
+      a.action_type === "purchase" ||
+      a.action_type === "offsite_conversion.fb_pixel_purchase" ||
+      a.action_type === "lead" ||
+      a.action_type === "offsite_conversion.fb_pixel_lead" ||
+      a.action_type === "complete_registration" ||
+      a.action_type === "offsite_conversion.fb_pixel_complete_registration" ||
+      a.action_type === "omni_purchase" ||
+      a.action_type === "onsite_conversion.messaging_conversation_started_7d"
+    ) {
+      total += parseInt(a.value ?? "0");
+    }
+  }
+  return total;
 }
 
 /** cn utility for conditional classNames */

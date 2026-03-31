@@ -86,7 +86,7 @@ function authUrl(path: string, params: Record<string, string> = {}): string {
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 export async function getAdAccounts(): Promise<MetaAdAccount[]> {
-  const fields = "id,account_id,name,account_status,currency,spend_cap,amount_spent,balance";
+  const fields = "id,account_id,name,business_name,account_status,currency,spend_cap,amount_spent,balance";
 
   // Fetch both owned and client ad accounts (agencies have client accounts)
   const [owned, client] = await Promise.all([

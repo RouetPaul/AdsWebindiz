@@ -28,6 +28,7 @@ export interface MetaAdAccount {
   id: string;
   account_id: string;
   name: string;
+  business_name?: string;
   account_status: AccountStatus;
   currency: string;
   spend_cap?: string;

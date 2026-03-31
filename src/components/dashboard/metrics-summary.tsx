@@ -33,7 +33,6 @@ export interface MetricsData {
   cpc: number;
   reach: number;
   currency?: string;
-  // Previous period for comparison
   prevSpend?: number;
   prevImpressions?: number;
   prevClicks?: number;
@@ -47,11 +46,12 @@ function pctChange(current: number, previous?: number): number | undefined {
 }
 
 export function MetricsSummary({ data }: { data: MetricsData }) {
+  const cur = data.currency ?? "EUR";
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
       <MetricCard
         label="Dépenses"
-        value={formatMoney(data.spend * 100, data.currency ?? "EUR")}
+        value={formatMoney(data.spend, cur)}
         change={pctChange(data.spend, data.prevSpend)}
       />
       <MetricCard
@@ -71,7 +71,7 @@ export function MetricsSummary({ data }: { data: MetricsData }) {
       />
       <MetricCard
         label="CPC"
-        value={formatMoney(data.cpc * 100, data.currency ?? "EUR")}
+        value={formatMoney(data.cpc, cur)}
         change={pctChange(data.cpc, data.prevCpc)}
       />
       <MetricCard
